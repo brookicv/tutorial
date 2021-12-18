@@ -6,4 +6,15 @@
  * @Description: 
  */
 
-#include "3rd/fmt-8.0.1/include/fmt/format.h"
+#include "fmt/format.h"
+#include <iostream>
+
+using namespace std;
+
+int main()
+{
+    fmt::print("hello world\n");
+    auto a = fmt::format("{},{}",10,"Shiledon");
+    cout << a << endl;
+    return 0;
+}
