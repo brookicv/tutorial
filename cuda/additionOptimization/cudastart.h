@@ -1,5 +1,8 @@
 #ifndef CUDASTART_H
 #define CUDASTART_H
+
+#include<cstdio>
+
 #define CHECK(call)\
 {\
   const cudaError_t error=call;\
@@ -19,6 +22,8 @@
 #	include <sys/time.h>
 #endif
 
+#include <random>
+
 double cpuSecond()
 {
   struct timeval tp;
@@ -37,6 +42,16 @@ void initialData(float* ip,int size)
   }
 }
 
+void initialData_int(int* ip, int size)
+{
+	time_t t;
+	srand((unsigned)time(&t));
+	for (int i = 0; i<size; i++)
+	{
+		ip[i] = int(rand()&0xff);
+	}
+}
+
 void initDevice(int devNum)
 {
   int dev = devNum;
@@ -44,7 +59,6 @@ void initDevice(int devNum)
   CHECK(cudaGetDeviceProperties(&deviceProp,dev));
   printf("Using device %d: %s\n",dev,deviceProp.name);
   CHECK(cudaSetDevice(dev));
-
 }
 void checkResult(float * hostRef,float * gpuRef,const int N)
 {
