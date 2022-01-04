@@ -25,7 +25,7 @@ __global__ void sumMatroxOnGpu(float *matrixA,float *MatrixB,float *matrixC,int 
     int ix = threadIdx.x + blockDim.x * blockIdx.x;
     int iy = threadIdx.y + blockDim.y * blockIdx.y;
 
-    int idx = ix + iy * ny; // 线程当前计算的元素所在的位置
+    int idx = ix + iy * nx; // 线程当前计算的元素所在的位置
 
     if(ix < nx && iy < ny){
         matrixC[idx] = MatrixB[idx] + matrixA[idx];
@@ -40,7 +40,7 @@ int main(int argc,char **argv)
 
     // 输入二维矩阵，4096*4096，float
     const int nx = 1 << 12;
-    const int ny = 1 << 12;
+    const int ny = 1 << 11;
     const int nBytes = nx * ny * sizeof(float);
 
     float *h_a = new float[nBytes];
