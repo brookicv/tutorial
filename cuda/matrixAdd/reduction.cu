@@ -87,6 +87,225 @@ __global__ void reduceInterleaved(int *g_idata,int *g_odata,int n)
 }
 
 
+/*
+
+如果每个线程处理两个数据块，那么我们需要的线程块总量会变为原来的一半，
+这样处理后线程块减少了，与我们之前要使用尽量多线程块的理论不符。
+但实际我们通过这种方式，让一个线程中有更多的独立内存加载/存储操作，
+这样可以更好地隐藏内存延时，更好地使用设备内存读取吞吐量的指标，以产生更好的性能。
+
+为了隐藏延时，我们需要合理地增加一个线程块中需要处理的数据量，以便线程束调度器进行调度。
+
+*/
+
+// 先在每个block里手动计算，两个块的和
+__global__ void reduceUnroll2(int *g_idata,int *g_odata,int n)
+{
+    int tid = threadIdx.x;
+    int idx = threadIdx.x + blockIdx.x * blockDim.x * 2;
+
+    if(tid >= n) return ;
+
+    // 每个block里计算两个块的和
+    int *data = g_idata + blockDim.x * blockIdx.x * 2;
+    if(idx + blockDim.x < n) {
+        g_idata[idx] += g_idata[idx + blockDim.x];
+    }
+
+    __syncthreads();
+
+    // 再将一个块的数据计算和
+    for(int stride = blockDim.x / 2; stride > 0; stride >>= 1){
+        if(tid < stride){
+            data[tid] += data[tid+stride];
+        }
+        __syncthreads();
+    }
+
+    // 将结果写回,只需要一个线程执行即可
+    if(tid == 0){
+        g_odata[blockIdx.x] = data[0];
+    }
+}
+
+// 一个block计算4个数据块
+__global__ void reduceUnroll4(int *g_idata,int *g_odata,int n)
+{
+    int tid = threadIdx.x;
+    int idx  = threadIdx.x + blockIdx.x * blockDim.x * 4;
+    if(idx >= n) return;
+
+    // 手动展开计算4个块的和
+    int *data = g_idata + blockIdx.x * blockDim.x * 4;
+    if(idx + blockDim.x * 3 < n){
+        g_idata[idx] += g_idata[idx + blockDim.x];
+        g_idata[idx] += g_idata[idx + blockDim.x * 2];
+        g_idata[idx] += g_idata[idx + blockDim.x * 3];
+    }
+    __syncthreads();
+
+    // 当前block内求数据块的和
+    for(int stride = blockDim.x / 2; stride > 0; stride >>= 1){
+        if(tid < stride){
+            data[tid] += data[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    if(tid == 0){
+        g_odata[blockIdx.x] = data[0];
+    }
+}
+
+// 一个block计算8个数据块
+__global__ void reduceUnroll8(int *g_idata,int *g_odata,int n)
+{
+    int tid = threadIdx.x;
+    int idx  = threadIdx.x + blockIdx.x * blockDim.x * 8;
+    if(idx >= n) return;
+
+    // 手动展开计算4个块的和
+    int *data = g_idata + blockIdx.x * blockDim.x * 8;
+    if(idx + blockDim.x * 7 < n){
+        g_idata[idx] += g_idata[idx + blockDim.x];
+        g_idata[idx] += g_idata[idx + blockDim.x * 2];
+        g_idata[idx] += g_idata[idx + blockDim.x * 3];
+        g_idata[idx] += g_idata[idx + blockDim.x * 4];
+        g_idata[idx] += g_idata[idx + blockDim.x * 5];
+        g_idata[idx] += g_idata[idx + blockDim.x * 6];
+        g_idata[idx] += g_idata[idx + blockDim.x * 7];
+    }
+    __syncthreads();
+
+    // 当前block内求数据块的和
+    for(int stride = blockDim.x / 2; stride > 0; stride >>= 1){
+        if(tid < stride){
+            data[tid] += data[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    if(tid == 0){
+        g_odata[blockIdx.x] = data[0];
+    }
+}
+
+// 将最后一个warp展开
+__global__ void reduceUnrollWarp8(int *g_idata,int *g_odata,int n)
+{
+        int tid = threadIdx.x;
+    int idx  = threadIdx.x + blockIdx.x * blockDim.x * 8;
+    if(idx >= n) return;
+
+    // 手动展开计算4个块的和
+    int *data = g_idata + blockIdx.x * blockDim.x * 8;
+    if(idx + blockDim.x * 7 < n){
+        g_idata[idx] += g_idata[idx + blockDim.x];
+        g_idata[idx] += g_idata[idx + blockDim.x * 2];
+        g_idata[idx] += g_idata[idx + blockDim.x * 3];
+        g_idata[idx] += g_idata[idx + blockDim.x * 4];
+        g_idata[idx] += g_idata[idx + blockDim.x * 5];
+        g_idata[idx] += g_idata[idx + blockDim.x * 6];
+        g_idata[idx] += g_idata[idx + blockDim.x * 7];
+    }
+    __syncthreads();
+
+    // 当前block内求数据块的和
+    for(int stride = blockDim.x / 2; stride > 32; stride >>= 1){
+        if(tid < stride){
+            data[tid] += data[tid + stride];
+        }
+        __syncthreads();
+    }
+
+    // 最后一轮迭代展开
+    if(tid < 32){
+        volatile int *vmem = data;
+        vmem[tid] += vmem[tid + 32]; 
+        vmem[tid] += vmem[tid + 16];
+        vmem[tid] += vmem[tid + 8];
+        vmem[tid] += vmem[tid + 4];
+        vmem[tid] += vmem[tid + 2];
+        vmem[tid] += vmem[tid + 1];
+    }
+
+    if(tid == 0){
+        g_odata[blockIdx.x] = data[0];
+    }
+} 
+
+// 将循环完全展开
+// 将最后一个warp展开
+__global__ void reduceCompleteUnrollWarp8(int *g_idata,int *g_odata,int n)
+{
+        int tid = threadIdx.x;
+    int idx  = threadIdx.x + blockIdx.x * blockDim.x * 8;
+    if(idx >= n) return;
+
+    // 手动展开计算4个块的和
+    int *data = g_idata + blockIdx.x * blockDim.x * 8;
+    if(idx + blockDim.x * 7 < n){
+        g_idata[idx] += g_idata[idx + blockDim.x];
+        g_idata[idx] += g_idata[idx + blockDim.x * 2];
+        g_idata[idx] += g_idata[idx + blockDim.x * 3];
+        g_idata[idx] += g_idata[idx + blockDim.x * 4];
+        g_idata[idx] += g_idata[idx + blockDim.x * 5];
+        g_idata[idx] += g_idata[idx + blockDim.x * 6];
+        g_idata[idx] += g_idata[idx + blockDim.x * 7];
+    }
+    __syncthreads();
+
+    // 将循环完全展开
+    if(blockDim.x>=1024 && tid <512)
+		data[tid]+=data[tid+512];
+	__syncthreads();
+	if(blockDim.x>=512 && tid <256)
+		data[tid]+=data[tid+256];
+	__syncthreads();
+	if(blockDim.x>=256 && tid <128)
+		data[tid]+=data[tid+128];
+	__syncthreads();
+	if(blockDim.x>=128 && tid <64)
+		data[tid]+=data[tid+64];
+	__syncthreads();
+
+    // 上面的写法是考虑到不同的block配置，如果默认是1024的话
+    // 随着计算，激活的线程越来越少了
+    if(tid < 512){
+        data[tid] += data[tid + 512];
+    } 
+    __syncthreads();  
+    if (tid < 256){
+        data[tid] += data[tid + 256];
+    } 
+    __syncthreads();
+    if (tid < 128) {
+        data[tid] += data[tid + 128];
+    }
+    __syncthreads();
+    if (tid < 64){
+        data[tid] += data[tid + 64];
+    }
+    __syncthreads();
+
+
+    // 最后一轮迭代展开
+    if(tid < 32){
+        volatile int *vmem = data;
+        vmem[tid] += vmem[tid + 32]; 
+        vmem[tid] += vmem[tid + 16];
+        vmem[tid] += vmem[tid + 8];
+        vmem[tid] += vmem[tid + 4];
+        vmem[tid] += vmem[tid + 2];
+        vmem[tid] += vmem[tid + 1];
+    }
+
+    if(tid == 0){
+        g_odata[blockIdx.x] = data[0];
+    }
+}
+
+
 int main(int argc,char** argv)
 {
 	initDevice(0);
@@ -96,7 +315,7 @@ int main(int argc,char** argv)
 	int size = 1 << 24;
 	printf("	with array size %d  ", size);
 
-    int blocksize = 512;
+    int blocksize = 1024;
 	dim3 block(blocksize, 1);
 	dim3 grid((size - 1) / block.x + 1, 1);
 	printf("grid %d block %d \n", grid.x, block.x);
@@ -180,6 +399,89 @@ int main(int argc,char** argv)
 	printf("gpu sum:%d \n", gpu_sum);
 	printf("gpu reduceInterleaved elapsed %lf ms     <<<grid %d block %d>>>\n",
 		timeElaps, grid.x, block.x);
+
+    //kernel4 reduceUnroll2
+    CHECK(cudaMemcpy(idata_dev,idata_host,bytes,cudaMemcpyHostToDevice));
+    CHECK(cudaDeviceSynchronize());
+    timeStart = cpuSecond();
+    reduceUnroll2<<<grid.x / 2,block>>>(idata_dev,odata_dev,size);
+    CHECK(cudaDeviceSynchronize());
+    cudaMemcpy(odata_host,odata_dev,grid.x / 2 * sizeof(int),cudaMemcpyDeviceToHost);
+    gpu_sum = 0;
+	for (int i = 0; i < grid.x / 2; i++)
+		gpu_sum += odata_host[i];	
+    timeElaps = 1000*(cpuSecond() - timeStart);
+
+	printf("gpu sum:%d \n", gpu_sum);
+	printf("gpu reduceUnroll2 elapsed %lf ms     <<<grid %d block %d>>>\n",
+		timeElaps, grid.x / 2, block.x);
+
+    // kernel5 reduceUnroll4
+    CHECK(cudaMemcpy(idata_dev,idata_host,bytes,cudaMemcpyHostToDevice));
+    CHECK(cudaDeviceSynchronize());
+    timeStart = cpuSecond();
+    reduceUnroll4<<<grid.x / 4,block>>>(idata_dev,odata_dev,size);
+    CHECK(cudaDeviceSynchronize());
+    cudaMemcpy(odata_host,odata_dev,grid.x / 4 * sizeof(int),cudaMemcpyDeviceToHost);
+    gpu_sum = 0;
+	for (int i = 0; i < grid.x / 4; i++)
+		gpu_sum += odata_host[i];	
+    timeElaps = 1000*(cpuSecond() - timeStart);
+
+	printf("gpu sum:%d \n", gpu_sum);
+	printf("gpu reduceUnroll4 elapsed %lf ms     <<<grid %d block %d>>>\n",
+		timeElaps, grid.x / 4, block.x);
+
+    
+    // kernel5 reduceUnroll8
+    CHECK(cudaMemcpy(idata_dev,idata_host,bytes,cudaMemcpyHostToDevice));
+    CHECK(cudaDeviceSynchronize());
+    timeStart = cpuSecond();
+    reduceUnroll8<<<grid.x / 8,block>>>(idata_dev,odata_dev,size);
+    CHECK(cudaDeviceSynchronize());
+    cudaMemcpy(odata_host,odata_dev,grid.x / 8 * sizeof(int),cudaMemcpyDeviceToHost);
+    gpu_sum = 0;
+	for (int i = 0; i < grid.x / 8; i++)
+		gpu_sum += odata_host[i];	
+    timeElaps = 1000*(cpuSecond() - timeStart);
+
+	printf("gpu sum:%d \n", gpu_sum);
+	printf("gpu reduceUnroll8 elapsed %lf ms     <<<grid %d block %d>>>\n",
+		timeElaps, grid.x / 8, block.x);
+
+
+        // kernel6 reduceUnrollWarp8
+    CHECK(cudaMemcpy(idata_dev,idata_host,bytes,cudaMemcpyHostToDevice));
+    CHECK(cudaDeviceSynchronize());
+    timeStart = cpuSecond();
+    reduceUnrollWarp8<<<grid.x / 8,block>>>(idata_dev,odata_dev,size);
+    CHECK(cudaDeviceSynchronize());
+    cudaMemcpy(odata_host,odata_dev,grid.x / 8 * sizeof(int),cudaMemcpyDeviceToHost);
+    gpu_sum = 0;
+	for (int i = 0; i < grid.x / 8; i++)
+		gpu_sum += odata_host[i];	
+    timeElaps = 1000*(cpuSecond() - timeStart);
+
+	printf("gpu sum:%d \n", gpu_sum);
+	printf("gpu reduceUnroll8 elapsed %lf ms     <<<grid %d block %d>>>\n",
+		timeElaps, grid.x / 8, block.x);
+
+
+    // kernel7 reduceUnrollWarp8
+    CHECK(cudaMemcpy(idata_dev,idata_host,bytes,cudaMemcpyHostToDevice));
+    CHECK(cudaDeviceSynchronize());
+    timeStart = cpuSecond();
+    reduceCompleteUnrollWarp8<<<grid.x / 8,block>>>(idata_dev,odata_dev,size);
+    CHECK(cudaDeviceSynchronize());
+    cudaMemcpy(odata_host,odata_dev,grid.x / 8 * sizeof(int),cudaMemcpyDeviceToHost);
+    gpu_sum = 0;
+	for (int i = 0; i < grid.x / 8; i++)
+		gpu_sum += odata_host[i];	
+    timeElaps = 1000*(cpuSecond() - timeStart);
+
+	printf("gpu sum:%d \n", gpu_sum);
+	printf("gpu reduceUnroll8 elapsed %lf ms     <<<grid %d block %d>>>\n",
+		timeElaps, grid.x / 8, block.x); 
 
     return 0;
 }
