@@ -63,8 +63,10 @@ __global__ void matrixAdd(float *matrixA,float *matrixB,float *matrixC,unsigned 
     unsigned int ix = threadIdx.x + blockIdx.x * blockDim.x;
     unsigned int iy = threadIdx.y + blockIdx.y * blockDim.y;
 
-    unsigned int index  = (blockIdx.x + blockIdx.y * gridDim.x) * (blockDim.x * blockDim.y)*4 + threadIdx.x + threadIdx.y * blockDim.x;
+    unsigned int threadId = threadIdx.x + threadIdx.y * blockDim.x;
+    unsigned int index  = (blockIdx.x + blockIdx.y * gridDim.x) * (blockDim.x * blockDim.y) * 2 + threadId;
     unsigned int blockSize = blockDim.x * blockDim.y;
+
     if(ix < nx && iy < ny){
          matrixC[index] = matrixA[index] + matrixB[index];
          matrixC[index + blockSize] = matrixA[index + blockSize] + matrixB[index + blockSize];
@@ -77,6 +79,24 @@ __global__ void matrixAdd(float *matrixA,float *matrixB,float *matrixC,unsigned 
     // }
     
 
+}
+
+__global__ void matrixAddSharedMemory(float *matrixA,float *matrixB,float *matrixC,unsigned int nx,unsigned int ny)
+{
+    unsigned int ix = threadIdx.x + blockIdx.x * blockDim.x;
+    unsigned int iy = threadIdx.y + blockIdx.y * blockDim.y;
+
+    unsigned int threadId = threadIdx.x + threadIdx.y * blockDim.x;
+    unsigned int index  = (blockIdx.x + blockIdx.y * gridDim.x) * (blockDim.x * blockDim.y) + threadId;
+
+    // __shared__ float bufferA[512];
+    // bufferA[threadId] = matrixA[index];
+
+    if(ix < nx && iy < ny){
+         matrixA[index] += matrixB[index];
+    }
+    // __syncthreads();
+    // matrixC[index] = bufferA[threadId];
 }
 
 int main()
@@ -124,10 +144,10 @@ int main()
     // kernel call
     cudaEventRecord(event_start);
     
-    sumMatrixOnGpu<<<grid,block>>>(d_a,d_b,d_c,nx,ny);
+    // sumMatrixOnGpu<<<grid,block>>>(d_a,d_b,d_c,nx,ny);
 
-    grid = dim3(grid.x / 2 ,grid.y / 2);
-    matrixAdd<<<grid,block>>>(d_a,d_b,d_c,nx,ny);
+    //grid = dim3(grid.x / 2 ,grid.y / 2);
+    matrixAddSharedMemory<<<grid,block>>>(d_a,d_b,d_c,nx,ny);
 
     cudaEventRecord(stop);
 
