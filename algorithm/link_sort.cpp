@@ -1,7 +1,7 @@
 /*** 
  * @Author: Lq
  * @Date: 2022-01-12 18:26:07
- * @LastEditTime: 2022-01-12 18:39:19
+ * @LastEditTime: 2022-01-13 11:00:56
  * @LastEditors: Lq
  * @Description: 单链表排序
  */
@@ -56,10 +56,10 @@ void destoryLink(ListNode* head){
     }
 }
 
-ListNode* paritalLink(ListNode* head){
+ListNode* paritalLink(ListNode* head,ListNode* end){
     auto node = head;
     int length = 0;
-    while(node){
+    while(node != end){
        length ++;
        node = node->next;
     }
@@ -74,14 +74,93 @@ ListNode* paritalLink(ListNode* head){
     return node;
 }
 
+ListNode* findMid(ListNode* head)
+{
+    if(head == nullptr || head->next == nullptr){
+        return head;
+    }
+
+    auto fast = head->next;
+    auto slow = head;
+    while(fast != nullptr && fast->next != nullptr){
+        slow = slow->next;
+        fast = fast->next->next;
+    }
+
+    return slow;
+}
+
+ListNode* merge(ListNode *head1,ListNode *head2)
+{
+    if(head1 == nullptr && head2 == nullptr){
+        return nullptr;
+    }
+
+    ListNode *head = nullptr;
+    ListNode *current = nullptr;
+    while(head1 && head2){
+        if(head1->val > head2->val){
+            if(head == nullptr){
+                head = head2;
+                current = head;
+            }else {
+                current->next = head2;
+                current = current->next;
+            }
+            head2 = head2->next;
+        } else {
+            if(head == nullptr){
+                head = head1;
+                current = head;
+            } else {
+                current->next = head1;
+                current = current->next;
+            }
+            head1 = head1->next;
+        }
+    }
+
+    if(head1 != nullptr){
+        current->next = head1;
+    }
+
+    if(head2 != nullptr){
+        current->next = head2;
+    }
+
+    return head;
+}
+
+
+
+ListNode* mergeSort(ListNode *head)
+{
+    if(head == nullptr || head->next == nullptr){
+        return head;
+    }
+
+    auto mid = findMid(head);
+    auto right = mergeSort(mid->next);
+
+    mid->next = nullptr;
+    auto left = mergeSort(head);
+    return merge(left,right);
+}
+
 
 int main()
 {
     ListNode* head = generate(11);
     printLink(head);
 
-    ListNode* right = paritalLink(head);
+    ListNode* right = paritalLink(head,nullptr);
     printLink(right);
+
+    ListNode* mid = findMid(head);
+    printLink(mid);
+
+    ListNode* sort = mergeSort(head);
+    printLink(sort);
 
     return 0;
 }
