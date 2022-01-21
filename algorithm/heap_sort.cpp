@@ -1,7 +1,7 @@
 /*** 
  * @Author: Lq
  * @Date: 2022-01-12 14:53:21
- * @LastEditTime: 2022-01-12 15:59:20
+ * @LastEditTime: 2022-01-19 10:33:03
  * @LastEditors: Lq
  * @Description: 堆排序
  */
@@ -112,8 +112,24 @@ void smallHeapSort(vector<int> &nums)
     }
 }
 
+
+union A {
+    int a;
+    char b;
+
+    void func(){
+        cout << "aaaaa ";
+        cout << a << endl;
+    }
+};
+
 int main()
 {
+
+    A aa;
+    aa.b = 1;
+    aa.func();
+
     vector<int> nums;
     randomVector(nums,5);
     printVector(nums);
