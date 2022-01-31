@@ -101,6 +101,13 @@ void quickSelect(vector<int> &nums,int begin,int end,int nth)
     }
 }
 
+void swap(vector<int> &nums,int i,int j)
+{
+    int a = nums[i];
+    nums[i] = nums[j];
+    nums[j] = a;
+}
+
 int main()
 {
     vector<int> nums = {1,3,2,2,3,2};
@@ -112,4 +119,20 @@ int main()
     quickSelect(nums,0,nums.size(),nums.size() / 2);
 
     printVector(nums);
+
+
+
+    vector<int> nums = {1,0,3,0,0,2,5};
+
+    int j = nums.size() - 1;
+    while(nums[j] == 0){
+        j--;
+    }
+    for(int i = 0; i < nums.size() - 1; i ++){
+        if(nums[i] == 0){
+            swap(nums,i,j);
+            while(nums[--j] == 0);
+        }
+        
+    }
 }
