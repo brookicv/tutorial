@@ -144,10 +144,10 @@ int main()
     // kernel call
     cudaEventRecord(event_start);
     
-    // sumMatrixOnGpu<<<grid,block>>>(d_a,d_b,d_c,nx,ny);
+    sumMatrixOnGpu<<<grid,block>>>(d_a,d_b,d_c,nx,ny);
 
     //grid = dim3(grid.x / 2 ,grid.y / 2);
-    matrixAddSharedMemory<<<grid,block>>>(d_a,d_b,d_c,nx,ny);
+    //matrixAddSharedMemory<<<grid,block>>>(d_a,d_b,d_c,nx,ny);
 
     cudaEventRecord(stop);
 

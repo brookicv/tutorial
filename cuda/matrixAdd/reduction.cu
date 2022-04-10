@@ -1,6 +1,6 @@
 #include <cuda.h>
 #include "cudastart.h"
-
+#include <cuda_profiler_api.h>
 // 将向量的原始累加,求和
 // 相邻的元素求和，分成不同的block，计算完成后，再将block的结果相加
 
@@ -468,6 +468,7 @@ int main(int argc,char** argv)
 
 
     // kernel7 reduceUnrollWarp8
+    cudaProfilerStart();
     CHECK(cudaMemcpy(idata_dev,idata_host,bytes,cudaMemcpyHostToDevice));
     CHECK(cudaDeviceSynchronize());
     timeStart = cpuSecond();
@@ -478,10 +479,16 @@ int main(int argc,char** argv)
 	for (int i = 0; i < grid.x / 8; i++)
 		gpu_sum += odata_host[i];	
     timeElaps = 1000*(cpuSecond() - timeStart);
+    cudaProfilerStop();
 
 	printf("gpu sum:%d \n", gpu_sum);
 	printf("gpu reduceUnroll8 elapsed %lf ms     <<<grid %d block %d>>>\n",
 		timeElaps, grid.x / 8, block.x); 
+
+    auto status = cudaGetLastError();
+    if(status != cudaSuccess){
+        printf("%s\n",cudaGetErrorString(status));
+    }
 
     return 0;
 }
