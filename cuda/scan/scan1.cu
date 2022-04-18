@@ -47,6 +47,7 @@ __global__ void BlellochScan1(const int *d_in,int *d_out,size_t n)
 
     extern __shared__ int shm[];
     shm[tid] = d_in[tid];
+    printf("%d\n",shm[tid]);
     __syncthreads();
 
     // reduce sweep
@@ -60,6 +61,7 @@ __global__ void BlellochScan1(const int *d_in,int *d_out,size_t n)
 
     if(tid == 0){
         shm[n - 1] = 0;
+        printf("%d\n",shm[n-1]);
     }
     __syncthreads();
 
@@ -187,9 +189,74 @@ __global__ void BlellochScan3(const int *d_in,int *d_out,size_t n)
     d_out[x2] = shm[x2];
 }
 
+__global__ void BlellochScan4(const int *d_in,int *d_out,size_t n)
+{
+    u_int32_t tid = threadIdx.x;
+    if(tid >= n) return ;
+
+    extern __shared__ int shm[];
+    u_int32_t x1 = tid;
+    u_int32_t x2 = tid + n / 2;
+
+    u_int32_t offset_x1 = CONFLICT_FREE_OFFSET(x1);
+    u_int32_t offset_x2 = CONFLICT_FREE_OFFSET(x2);
+
+    shm[x1 + offset_x1] = d_in[x1];
+    shm[x2 + offset_x2] = d_in[x2];
+    __syncthreads();
+
+    int offset = 1;
+    for(size_t d = n / 2;d > 0; d /= 2){
+        if(tid < d){
+            u_int32_t x1 = 2 * offset * (tid + 1) - 1;
+            u_int32_t x2 = x1 - offset;
+            x1 += CONFLICT_FREE_OFFSET(x1);
+            x2 += CONFLICT_FREE_OFFSET(x2);
+
+            shm[x1] += shm[x2];
+        }
+        offset *= 2;
+        __syncthreads();
+    }
+
+    if(tid == 0){
+        shm[n - 1 + CONFLICT_FREE_OFFSET(n - 1)] = 0;
+    }
+
+    for(size_t d = 1; d < n; d *= 2){
+        offset >>= 1;
+        __syncthreads();
+
+        if(tid < d){
+            u_int32_t x1 = 2 * offset * (tid + 1) - 1;
+            u_int32_t x2 = x1 - offset;
+
+            x1 += CONFLICT_FREE_OFFSET(x1);
+            x2 += CONFLICT_FREE_OFFSET(x2);
+
+            int tmp = shm[x2];
+            shm[x2] = shm[x1];
+            shm[x1] += tmp;
+        }
+    }
+    __syncthreads();
+
+    d_out[x1] = shm[x1 + offset_x1];
+    d_out[x2] = shm[x2 + offset_x2];
+}
+
+__global__ void TestKernel(int *d_in){
+
+    unsigned int tid = threadIdx.x;
+
+    printf("%d\n",d_in[tid]);
+    d_in[tid] += 1;
+
+}
+
 int main()
 {
-    const size_t size = 1024;
+    const size_t size = 64;
     
     int *host_data = new int[size];
     for(size_t i = 0; i < size; i ++){
@@ -208,7 +275,9 @@ int main()
 
     cudaMemcpy(dev_data,host_data,size * sizeof(int),cudaMemcpyKind::cudaMemcpyHostToDevice);
 
-    BlellochScan1<<<1,size,size * sizeof(int)>>>(dev_data,dev_out,size);
+    TestKernel<<<1,size>>>(dev_data);
+
+    //BlellochScan1<<<1,size,size * sizeof(int)>>>(dev_data,dev_out,size);
     cudaDeviceSynchronize();
 
     cudaMemcpy(host_out,dev_out,size * sizeof(int),cudaMemcpyKind::cudaMemcpyDeviceToHost);
@@ -216,25 +285,25 @@ int main()
         printf("Blelloch Scan 1 success.\n");
     }
 
-    memset(host_out,0,size * sizeof(int));
-    cudaMemset(dev_out,0,size * sizeof(int));
-    BlellochScan2<<<1,size,2 * size * sizeof(int)>>>(dev_data,dev_out,size);
-    cudaDeviceSynchronize();
+    // memset(host_out,0,size * sizeof(int));
+    // cudaMemset(dev_out,0,size * sizeof(int));
+    // BlellochScan2<<<1,size,2 * size * sizeof(int)>>>(dev_data,dev_out,size);
+    // cudaDeviceSynchronize();
 
-    cudaMemcpy(host_out,dev_out,size * sizeof(int),cudaMemcpyKind::cudaMemcpyDeviceToHost);
-    if(check(exclusive_out,host_out,size)){
-        printf("Blelloch Scan 2 success.\n");
-    }
+    // cudaMemcpy(host_out,dev_out,size * sizeof(int),cudaMemcpyKind::cudaMemcpyDeviceToHost);
+    // if(check(exclusive_out,host_out,size)){
+    //     printf("Blelloch Scan 2 success.\n");
+    // }
 
-    memset(host_out,0,size * sizeof(int));
-    cudaMemset(dev_out,0,size * sizeof(int));
-    BlellochScan3<<<1,size / 2,size * sizeof(int)>>>(dev_data,dev_out,size);
-    cudaDeviceSynchronize();
+    // memset(host_out,0,size * sizeof(int));
+    // cudaMemset(dev_out,0,size * sizeof(int));
+    // BlellochScan3<<<1,size / 2,size * sizeof(int)>>>(dev_data,dev_out,size);
+    // cudaDeviceSynchronize();
 
-    cudaMemcpy(host_out,dev_out,size * sizeof(int),cudaMemcpyKind::cudaMemcpyDeviceToHost);
-    if(check(exclusive_out,host_out,size)){
-        printf("Blelloch Scan 3 success.\n");
-    }
+    // cudaMemcpy(host_out,dev_out,size * sizeof(int),cudaMemcpyKind::cudaMemcpyDeviceToHost);
+    // if(check(exclusive_out,host_out,size)){
+    //     printf("Blelloch Scan 3 success.\n");
+    // }
 
     if(size <= 64){
         printVector(host_data,size);
