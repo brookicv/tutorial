@@ -27,6 +27,15 @@ void ExclusiveScanSequtial(const int *input,int *output,size_t n)
 	}
 }
 
+void InclusiveScan(const int *input,int *output,size_t n)
+{
+    int sum = 0;
+    for(size_t i = 0; i < n; i ++){
+        sum += input[i];
+        output[i] = sum;
+    }
+}
+
 bool check(const int *cpu_out,const int *gpu_out,size_t n)
 {
     for(size_t i = 0; i < n; i ++){
